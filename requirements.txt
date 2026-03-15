@@ -1,0 +1,18 @@
+# Core vision
+opencv-python>=4.8.0
+mediapipe>=0.10.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Automation
+pyautogui>=0.9.54
+
+# Voice recognition
+SpeechRecognition>=3.10.0
+pyaudio>=0.2.13          # microphone input backend
+
+# Optional: faster offline speech recognition
+# vosk>=0.3.45
+
+# Utilities
+Pillow>=10.0.0           # required by pyautogui on some platforms
