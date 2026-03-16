@@ -120,7 +120,7 @@ MAX_NUM_FACES            = 1
 REFINE_LANDMARKS         = True   # enables iris landmarks 468-477
 MIN_DETECTION_CONFIDENCE = 0.7
 MIN_TRACKING_CONFIDENCE  = 0.7
-MEDIAPIPE_FACE_LANDMARK_MODEL_PATH = None  # Required for MediaPipe Tasks API (new MP version with mp.tasks)
+MEDIAPIPE_FACE_LANDMARK_MODEL_PATH = "face_landmarker.task"  # Required for MediaPipe Tasks API
 
 # ─── MediaPipe landmark indices ─────────────────────────────────────────────
 # Right eye (camera-left = user's right)
@@ -170,4 +170,20 @@ OVERLAY_ALPHA      = 0.7
 OVERLAY_SCALE      = 1.0
 EAR_OPEN_THRESHOLD = EAR_THRESHOLD
 
-
+# ─── Load User Settings Overrides ───────────────────────────────────────────
+try:
+    import json
+    import os
+    _override_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+    if os.path.exists(_override_path):
+        with open(_override_path, "r") as _f:
+            _s = json.load(_f)
+            if "CURSOR_SMOOTHING" in _s: CURSOR_SMOOTHING = _s["CURSOR_SMOOTHING"]
+            if "GAZE_SENSITIVITY_X" in _s: GAZE_SENSITIVITY_X = _s["GAZE_SENSITIVITY_X"]
+            if "GAZE_SENSITIVITY_Y" in _s: GAZE_SENSITIVITY_Y = _s["GAZE_SENSITIVITY_Y"]
+            if "EAR_THRESHOLD" in _s: 
+                EAR_THRESHOLD = _s["EAR_THRESHOLD"]
+                EAR_BLINK_THRESHOLD = EAR_THRESHOLD
+                EAR_OPEN_THRESHOLD = EAR_THRESHOLD
+except Exception as _e:
+    print(f"[Config] Could not load settings defaults: {_e}")

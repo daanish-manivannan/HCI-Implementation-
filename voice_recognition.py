@@ -357,6 +357,7 @@ class Command(Enum):
     TOGGLE_DARK_MODE = auto()
     LOCK_SCREEN = auto()
     OPEN_SETTINGS = auto()
+    OPEN_DASHBOARD = auto()
     OPEN_CALCULATOR = auto()
     REFRESH_SCREEN = auto()
     
@@ -428,6 +429,8 @@ VOICE_COMMAND_MAP = {
     "lock": Command.LOCK_SCREEN,
     "open settings": Command.OPEN_SETTINGS,
     "settings": Command.OPEN_SETTINGS,
+    "open dashboard": Command.OPEN_DASHBOARD,
+    "dashboard": Command.OPEN_DASHBOARD,
     "open calculator": Command.OPEN_CALCULATOR,
     "calculator": Command.OPEN_CALCULATOR,
     "refresh": Command.REFRESH_SCREEN,
@@ -604,6 +607,14 @@ def phrase_to_command(phrase: str) -> Tuple[Optional[Command], str, float]:
             logger.info("Voice: Keyword match '%s' found in phrase '%s' -> %s (conf=%.2f)", 
                        word, phrase, cmd.name, confidence)
             return cmd, phrase, confidence
+            
+    # LLM Fallback (if all static rules fail)
+    logger.info("Voice: No static match found. Querying LLM agent for intent...")
+    from llm_agent import parse_natural_language
+    llm_cmd, llm_payload = parse_natural_language(phrase)
+    if llm_cmd is not None:
+        logger.info("Voice: LLM successfully resolved intent -> %s (payload: '%s')", llm_cmd.name, llm_payload)
+        return llm_cmd, llm_payload, 0.99
     
     logger.warning("Voice: [NO-MATCH] for phrase '%s'", phrase[:50])
     return None, phrase, 0.0

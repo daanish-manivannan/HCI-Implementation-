@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import SCROLL_LINES
 from cursor_controller import CursorController
 from voice_recognition import Command
+import audio_feedback
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -285,6 +286,16 @@ class CommandInterpreter:
                     msg = f"[ERROR] Error opening settings: {e}"
                     logger.error("[Windows] Error: %s", e)
 
+            elif cmd == Command.OPEN_DASHBOARD:
+                try:
+                    import settings_gui
+                    settings_gui.launch_dashboard()
+                    msg = "[GUI] Dashboard opened"
+                    logger.info("[GUI] Opened settings dashboard")
+                except Exception as e:
+                    msg = f"[ERROR] Could not open GUI: {e}"
+                    logger.error("[GUI] Error: %s", e)
+
             elif cmd == Command.OPEN_CALCULATOR:
                 try:
                     from windows_commands import WindowsCommandHandler
@@ -381,6 +392,18 @@ class CommandInterpreter:
             self.last_confidence = confidence
             self.status_message = msg
             logger.info("[Voice] [OK] Successfully executed: %s", msg)
+            
+            # Extract plain text from the UI message format e.g. "[WEB] Browser opened" -> "Browser opened"
+            plain_msg = msg.split(']')[-1].strip() if ']' in msg else msg
+            
+            # Avoid speaking repetitive actions like scroll/click to prevent nuisance
+            silent_commands = {
+                Command.CLICK, Command.DOUBLE_CLICK, Command.RIGHT_CLICK,
+                Command.SCROLL_UP, Command.SCROLL_DOWN, Command.TYPE_TEXT
+            }
+            if cmd not in silent_commands:
+                audio_feedback.speak(plain_msg)
+
             return msg
 
         except Exception as exc:

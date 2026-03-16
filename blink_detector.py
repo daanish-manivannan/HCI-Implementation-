@@ -13,9 +13,10 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from config import (
     LEFT_EYE_EAR, RIGHT_EYE_EAR,
-    EAR_BLINK_THRESHOLD, EAR_CONSEC_FRAMES,
+    EAR_CONSEC_FRAMES,
     DOUBLE_BLINK_INTERVAL, LONG_BLINK_FRAMES,
 )
+import config
 
 
 def _ear(landmarks, indices, iw: int, ih: int) -> float:
@@ -46,13 +47,13 @@ class BlinkDetector:
         left_ear  = _ear(landmarks, LEFT_EYE_EAR,  iw, ih)
         right_ear = _ear(landmarks, RIGHT_EYE_EAR, iw, ih)
         self.ear = (left_ear + right_ear) / 2.0
-        if self.ear < EAR_BLINK_THRESHOLD:
+        if self.ear < config.EAR_BLINK_THRESHOLD:
             self._closed_frames += 1
             if self._closed_frames >= LONG_BLINK_FRAMES:
                 self.long_blink = True
                 self._long_blink_active = True
         else:
-            if self._closed_frames >= EAR_CONSEC_FRAMES:
+            if self._closed_frames >= EAR_CONSEC_FRAMES and not self._long_blink_active:
                 self._register_blink()
             self._closed_frames = 0
             self._long_blink_active = False

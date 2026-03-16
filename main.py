@@ -33,7 +33,7 @@ import numpy as np
 try:
     from mediapipe.tasks.python.vision.core import image as mp_image
     from mediapipe.tasks.python.vision.core import vision_task_running_mode as mp_running_mode
-    from mediapipe.tasks.vision import FaceLandmarker, FaceLandmarkerOptions
+    from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions
 except Exception:
     mp_image = None
     mp_running_mode = None
@@ -53,6 +53,8 @@ from voice_recognition import VoiceHandler, Command
 from command_interpreter import CommandInterpreter
 from calibration import Calibrator
 from overlay import draw_overlay, draw_calibration_target
+import audio_feedback
+from camera_thread import VideoCaptureThread
 
 # ── Screen dimensions ────────────────────────
 SCREEN_W, SCREEN_H = pyautogui.size()
@@ -70,13 +72,19 @@ def build_face_mesh():
 
     # New MediaPipe Tasks API path
     if FaceLandmarker and FaceLandmarkerOptions and mp_image and mp_running_mode:
-        model_path = getattr(config, "MEDIAPIPE_FACE_LANDMARK_MODEL_PATH", None)
-        if not model_path:
-            raise RuntimeError(
-                "No MediaPipe face landmarker model path configured. "
-                "Set config.MEDIAPIPE_FACE_LANDMARK_MODEL_PATH to a .tflite model file "
-                "or install a compatible mediapipe package (<=0.10.5) for mp.solutions API."
-            )
+        model_path = getattr(config, "MEDIAPIPE_FACE_LANDMARK_MODEL_PATH", "face_landmarker.task")
+        
+        if not os.path.exists(model_path):
+            print(f"[System] Downloading MediaPipe face model to {model_path}...")
+            import urllib.request
+            try:
+                urllib.request.urlretrieve(
+                    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                    model_path
+                )
+                print("[System] Download complete.")
+            except Exception as e:
+                raise RuntimeError(f"Failed to download MediaPipe model: {e}")
 
         base_options = mp.tasks.BaseOptions(model_asset_path=model_path)
         options = FaceLandmarkerOptions(
@@ -93,16 +101,19 @@ def build_face_mesh():
 
 
 def open_camera():
-    cap = cv2.VideoCapture(config.WEBCAM_INDEX)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  config.FRAME_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
-    cap.set(cv2.CAP_PROP_FPS,          30)
-    if not cap.isOpened():
+    try:
+        cap = VideoCaptureThread(
+            src=config.WEBCAM_INDEX,
+            width=config.FRAME_WIDTH,
+            height=config.FRAME_HEIGHT,
+            fps=30
+        )
+        return cap
+    except Exception as e:
         raise RuntimeError(
             f"Cannot open camera index {config.WEBCAM_INDEX}. "
-            "Check that a webcam is connected and not in use."
+            f"Check that a webcam is connected and not in use. Error: {e}"
         )
-    return cap
 
 
 def main():
@@ -119,6 +130,7 @@ def main():
     print("    P        Pause / Resume tracking")
     print("    R        Reset calibration")
     print("    D        Toggle debug overlay")
+    print("    G        Open Settings Dashboard")
     print("=" * 60)
 
     cap          = open_camera()
@@ -163,6 +175,10 @@ def main():
     else:
         print("[System] Ready. Press 'C' in the webcam window to calibrate first.")
 
+    last_settings_check = 0.0
+    last_settings_mtime = 0.0
+    settings_file_path = os.path.join(ROOT, "settings.json")
+
     try:
         while True:
             ret, frame = cap.read()
@@ -191,6 +207,26 @@ def main():
             face_detected = bool(face_landmarks_list)
 
             now = time.time()
+            if now - last_settings_check > 1.0:
+                last_settings_check = now
+                if os.path.exists(settings_file_path):
+                    try:
+                        mtime = os.path.getmtime(settings_file_path)
+                        if mtime > last_settings_mtime:
+                            last_settings_mtime = mtime
+                            import json
+                            with open(settings_file_path, "r") as f:
+                                s = json.load(f)
+                                if "CURSOR_SMOOTHING" in s: config.CURSOR_SMOOTHING = s["CURSOR_SMOOTHING"]
+                                if "GAZE_SENSITIVITY_X" in s: config.GAZE_SENSITIVITY_X = s["GAZE_SENSITIVITY_X"]
+                                if "GAZE_SENSITIVITY_Y" in s: config.GAZE_SENSITIVITY_Y = s["GAZE_SENSITIVITY_Y"]
+                                if "EAR_THRESHOLD" in s: 
+                                    config.EAR_THRESHOLD = s["EAR_THRESHOLD"]
+                                    config.EAR_BLINK_THRESHOLD = config.EAR_THRESHOLD
+                                    config.EAR_OPEN_THRESHOLD = config.EAR_THRESHOLD
+                    except Exception:
+                        pass
+
             blink_flash_str = blink_flash_str if now < blink_flash_end else ""
             action_status   = action_status   if now < action_end      else ""
 
@@ -340,6 +376,10 @@ def main():
             elif key in (ord("d"), ord("D")):
                 show_overlay = not show_overlay
                 print(f"[System] Overlay {'ON' if show_overlay else 'OFF'}.")
+            elif key in (ord("g"), ord("G")):
+                import settings_gui
+                settings_gui.launch_dashboard()
+                print("[System] Opened GUI dashboard.")
 
     except KeyboardInterrupt:
         print("\n[System] Interrupted by user.")
@@ -354,6 +394,7 @@ def main():
         cap.release()
         cv2.destroyAllWindows()
         face_mesh.close()
+        audio_feedback.stop()
         print("[System] Done.")
 
 
