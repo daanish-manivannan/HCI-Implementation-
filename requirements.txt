@@ -16,3 +16,4 @@ pyaudio>=0.2.13          # microphone input backend
 
 # Utilities
 Pillow>=10.0.0           # required by pyautogui on some platforms
+pyperclip>=1.8.0         # clipboard support for code generation

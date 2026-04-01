@@ -29,16 +29,20 @@ import mediapipe as mp
 import pyautogui
 import numpy as np
 
-# Optional imports for MediaPipe Tasks API (newer versions)
+# Optional imports for MediaPipe Tasks API (newer versions >=0.10.30)
 try:
     from mediapipe.tasks.python.vision.core import image as mp_image
     from mediapipe.tasks.python.vision.core import vision_task_running_mode as mp_running_mode
-    from mediapipe.tasks.vision import FaceLandmarker, FaceLandmarkerOptions
+    from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions
+    from mediapipe.tasks.python.core.base_options import BaseOptions as _BaseOptions
+    _HAS_TASKS_API = True
 except Exception:
     mp_image = None
     mp_running_mode = None
     FaceLandmarker = None
     FaceLandmarkerOptions = None
+    _BaseOptions = None
+    _HAS_TASKS_API = False
 
 # ── Project root on path ─────────────────────
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -53,6 +57,7 @@ from voice_recognition import VoiceHandler, Command
 from command_interpreter import CommandInterpreter
 from calibration import Calibrator
 from overlay import draw_overlay, draw_calibration_target
+from llm_handler import initialize_llm, is_llm_available
 
 # ── Screen dimensions ────────────────────────
 SCREEN_W, SCREEN_H = pyautogui.size()
@@ -69,16 +74,24 @@ def build_face_mesh():
         )
 
     # New MediaPipe Tasks API path
-    if FaceLandmarker and FaceLandmarkerOptions and mp_image and mp_running_mode:
+    if FaceLandmarker and FaceLandmarkerOptions and mp_image and mp_running_mode and _BaseOptions:
         model_path = getattr(config, "MEDIAPIPE_FACE_LANDMARK_MODEL_PATH", None)
         if not model_path:
             raise RuntimeError(
                 "No MediaPipe face landmarker model path configured. "
-                "Set config.MEDIAPIPE_FACE_LANDMARK_MODEL_PATH to a .tflite model file "
-                "or install a compatible mediapipe package (<=0.10.5) for mp.solutions API."
+                "Set config.MEDIAPIPE_FACE_LANDMARK_MODEL_PATH to a .task model file."
+            )
+        # Resolve relative paths based on the script's directory
+        if not os.path.isabs(model_path):
+            model_path = os.path.join(ROOT, model_path)
+        if not os.path.exists(model_path):
+            raise RuntimeError(
+                f"MediaPipe model file not found: {model_path}\n"
+                "Download it from: https://storage.googleapis.com/mediapipe-models/"
+                "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
             )
 
-        base_options = mp.tasks.BaseOptions(model_asset_path=model_path)
+        base_options = _BaseOptions(model_asset_path=model_path)
         options = FaceLandmarkerOptions(
             base_options=base_options,
             running_mode=mp_running_mode.VisionTaskRunningMode.IMAGE,
@@ -93,16 +106,33 @@ def build_face_mesh():
 
 
 def open_camera():
-    cap = cv2.VideoCapture(config.WEBCAM_INDEX)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  config.FRAME_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
-    cap.set(cv2.CAP_PROP_FPS,          30)
-    if not cap.isOpened():
-        raise RuntimeError(
-            f"Cannot open camera index {config.WEBCAM_INDEX}. "
-            "Check that a webcam is connected and not in use."
-        )
-    return cap
+    # On Windows, CAP_DSHOW (DirectShow) is required for reliable frame capture.
+    # Try it first, then fall back to the default backend.
+    backends = []
+    if sys.platform == "win32":
+        backends.append(cv2.CAP_DSHOW)
+    backends.append(0)  # 0 = default backend
+
+    cap = None
+    for backend in backends:
+        if backend == 0:
+            cap = cv2.VideoCapture(config.WEBCAM_INDEX)
+        else:
+            cap = cv2.VideoCapture(config.WEBCAM_INDEX, backend)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  config.FRAME_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.FRAME_HEIGHT)
+        cap.set(cv2.CAP_PROP_FPS,          30)
+        if cap.isOpened():
+            ret, _ = cap.read()
+            if ret:
+                print(f"[Camera] Opened with backend {'DirectShow' if backend == cv2.CAP_DSHOW else 'default'}")
+                return cap
+            cap.release()
+
+    raise RuntimeError(
+        f"Cannot open camera index {config.WEBCAM_INDEX}. "
+        "Check that a webcam is connected and not in use."
+    )
 
 
 def main():
@@ -130,7 +160,25 @@ def main():
     cursor       = CursorController()
     voice        = VoiceHandler()
     print('[System] Voice handler created')
-    interpreter  = CommandInterpreter(cursor)
+    
+    # ── Initialize LLM ──────────────────────────
+    llm = None
+    if config.LLM_ENABLED:
+        try:
+            llm = initialize_llm(
+                host=config.LLM_OLLAMA_HOST,
+                port=config.LLM_OLLAMA_PORT,
+                model=config.LLM_MODEL
+            )
+            if is_llm_available():
+                print(f'[LLM] ✓ LLM initialized: {llm.selected_model}')
+            else:
+                print('[LLM] ⚠ LLM unavailable - will use local processing')
+        except Exception as e:
+            print(f'[LLM] Error initializing LLM: {e}')
+            print('[LLM] Continuing without LLM support...')
+    
+    interpreter  = CommandInterpreter(cursor, llm_handler=llm)
     calibrator   = None
 
     voice.start()
@@ -140,6 +188,8 @@ def main():
     print('  * Waiting for voice input...')
     print('  * Speak a command when ready')
     print('  * Check console for [Voice] messages')
+    if is_llm_available():
+        print('[LLM] * LLM-powered command enhancement enabled')
     print('=' * 60)
 
     tracking_active = True
@@ -182,7 +232,7 @@ def main():
                 using_legacy_api = True
             else:
                 # MediaPipe Tasks API
-                mp_image_obj = mp_image.Image(mp_image.ImageFormat.SRGB, rgb)
+                mp_image_obj = mp_image.Image(image_format=mp_image.ImageFormat.SRGB, data=rgb)
                 detection = face_mesh.detect(mp_image_obj)
                 face_landmarks_list = getattr(detection, "face_landmarks", None)
                 using_legacy_api = False
@@ -353,7 +403,8 @@ def main():
         voice.stop()
         cap.release()
         cv2.destroyAllWindows()
-        face_mesh.close()
+        if hasattr(face_mesh, "close"):
+            face_mesh.close()
         print("[System] Done.")
 
 

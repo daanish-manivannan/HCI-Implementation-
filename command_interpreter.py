@@ -10,6 +10,7 @@ and action (cursor, keyboard).
 Supports:
   - Blink gestures (single/double/long)
   - Voice commands with state validation
+  - LLM-enhanced command interpretation
   - Human-friendly status messages
   - Confidence-aware command execution
 """
@@ -17,6 +18,7 @@ Supports:
 import logging
 import sys
 import os
+from typing import Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -48,14 +50,21 @@ class CommandInterpreter:
     ──────────────
     See voice_recognition.Command enum for full list.
     Includes confidence scoring support.
+    
+    LLM Enhancement
+    ───────────────
+    Optional LLM integration for semantic understanding of voice input.
     """
 
-    def __init__(self, cursor: CursorController):
+    def __init__(self, cursor: CursorController, llm_handler: Optional[object] = None):
         self._cursor = cursor
+        self._llm = llm_handler
         self.status_message = ""          # Last action taken (for overlay display)
         self.last_command = None          # Last successfully executed command
         self.last_confidence = 0.0        # Confidence of last command match
         logger.info("CommandInterpreter initialized")
+        if self._llm:
+            logger.info("CommandInterpreter: LLM support enabled")
 
     # ── Blink actions ────────────────────────
     def handle_blink(self, blink_type: str) -> None:
@@ -109,12 +118,14 @@ class CommandInterpreter:
             msg = ""
 
             if cmd == Command.SCROLL_UP:
-                c.scroll(SCROLL_LINES)
-                msg = "[UP] Scroll up"
+                amount = int(text) if text and text.isdigit() else SCROLL_LINES
+                c.scroll(amount)
+                msg = f"[UP] Scroll up ({amount} lines)"
 
             elif cmd == Command.SCROLL_DOWN:
-                c.scroll(-SCROLL_LINES)
-                msg = "[DOWN] Scroll down"
+                amount = int(text) if text and text.isdigit() else SCROLL_LINES
+                c.scroll(-amount)
+                msg = f"[DOWN] Scroll down ({amount} lines)"
 
             elif cmd == Command.GO_BACK:
                 c.hotkey("alt", "left")
@@ -144,6 +155,10 @@ class CommandInterpreter:
                 c.hotkey("ctrl", "v")
                 msg = "[PIN] Paste"
 
+            elif cmd == Command.CUT:
+                c.hotkey("ctrl", "x")
+                msg = "[CUT] Cut"
+
             elif cmd == Command.UNDO:
                 c.hotkey("ctrl", "z")
                 msg = "[UNDO] Undo"
@@ -169,16 +184,13 @@ class CommandInterpreter:
                 msg = "[ZOOM] Zoom reset"
 
             elif cmd == Command.OPEN_BROWSER:
-                import subprocess
+                import webbrowser
                 try:
-                    if sys.platform == "win32":
-                        subprocess.Popen(["start", "https://www.google.com"], shell=True)
-                    else:
-                        subprocess.Popen(["xdg-open", "https://www.google.com"])
+                    webbrowser.open("https://www.google.com")
                     msg = "[WEB] Browser opened"
                 except Exception as e:
                     logger.error("Failed to open browser: %s", e)
-                    c.hotkey("super")   # fallback: open launcher
+                    c.hotkey("super")
                     msg = "[DESKTOP] Launcher opened"
 
             elif cmd == Command.CLOSE_WINDOW:
@@ -303,18 +315,100 @@ class CommandInterpreter:
                     msg = f"[ERROR] Error refreshing screen: {e}"
                     logger.error("[Windows] Error: %s", e)
 
+            # ── Volume / Brightness / Bluetooth / Maximize ──────
+            elif cmd == Command.VOLUME_UP:
+                try:
+                    from windows_commands import WindowsCommandHandler
+                    msg = WindowsCommandHandler.volume_up()
+                except Exception as e:
+                    msg = f"[ERROR] {e}"
+
+            elif cmd == Command.VOLUME_DOWN:
+                try:
+                    from windows_commands import WindowsCommandHandler
+                    msg = WindowsCommandHandler.volume_down()
+                except Exception as e:
+                    msg = f"[ERROR] {e}"
+
+            elif cmd == Command.VOLUME_MUTE:
+                try:
+                    from windows_commands import WindowsCommandHandler
+                    msg = WindowsCommandHandler.volume_mute()
+                except Exception as e:
+                    msg = f"[ERROR] {e}"
+
+            elif cmd == Command.BRIGHTNESS_UP:
+                try:
+                    from windows_commands import WindowsCommandHandler
+                    msg = WindowsCommandHandler.brightness_up()
+                except Exception as e:
+                    msg = f"[ERROR] {e}"
+
+            elif cmd == Command.BRIGHTNESS_DOWN:
+                try:
+                    from windows_commands import WindowsCommandHandler
+                    msg = WindowsCommandHandler.brightness_down()
+                except Exception as e:
+                    msg = f"[ERROR] {e}"
+
+            elif cmd == Command.TOGGLE_BLUETOOTH:
+                try:
+                    from windows_commands import WindowsCommandHandler
+                    msg = WindowsCommandHandler.toggle_bluetooth()
+                except Exception as e:
+                    msg = f"[ERROR] {e}"
+
+            elif cmd == Command.MAXIMIZE_ALL:
+                try:
+                    from windows_commands import WindowsCommandHandler
+                    msg = WindowsCommandHandler.maximize_all()
+                except Exception as e:
+                    msg = f"[ERROR] {e}"
+
             # ── Code Generation Commands ─────────────────────
             elif cmd == Command.GENERATE_CODE:
                 try:
                     from code_generator import CodeGenerator
+
                     code_request = text if text else "hello world"
+
+                    # Allow voice to specify a destination editor, e.g.
+                    #   "generate fibonacci in vscode"
+                    #   "generate hello world in notepad++"
+                    #   "generate palindrome in sublime"
+                    editor_override = None
+                    _EDITOR_HINTS = {
+                        "vscode": "vscode",
+                        "vs code": "vscode",
+                        "visual studio code": "vscode",
+                        "notepad++": "notepadplusplus",
+                        "notepad plus plus": "notepadplusplus",
+                        "sublime": "sublime",
+                        "sublime text": "sublime",
+                        "atom": "atom",
+                        "notepad": "notepad",
+                    }
+                    for hint, key in _EDITOR_HINTS.items():
+                        suffix = f" in {hint}"
+                        if code_request.lower().endswith(suffix):
+                            editor_override = key
+                            code_request = code_request[: -len(suffix)].strip()
+                            logger.info("[CodeGen] Editor override from voice: %s", key)
+                            break
+
+                    logger.info("[CodeGen] Generating code for: %s", code_request)
                     code, gen_msg = CodeGenerator.generate_code(code_request)
-                    if code:
-                        msg = f"[Generated Code]\n{code[:50]}...\n(Use 'open code in editor' to save it)"
-                        logger.info("[CodeGen] Generated code: %s", gen_msg)
-                    else:
+
+                    if not code:
                         msg = "[ERROR] Failed to generate code"
                         logger.error("[CodeGen] Generation failed for: %s", code_request)
+                    else:
+                        lang = CodeGenerator.detect_language(code_request)
+                        logger.info("[CodeGen] Code generated (%d chars). Opening editor...", len(code))
+                        editor_msg = CodeGenerator.open_in_editor(code, lang, editor=editor_override)
+                        msg = f"[OK] Generated {lang} code — {editor_msg} ({len(code)} chars)"
+                        logger.info("[CodeGen] %s | %s", msg, gen_msg)
+
                 except ImportError as e:
                     msg = f"[ERROR] Code generator module not found: {e}"
                     logger.error("[CodeGen] Import error: %s", e)
@@ -356,12 +450,32 @@ class CommandInterpreter:
                 try:
                     from code_generator import CodeGenerator
                     code_request = text if text else "hello world"
-                    
+
+                    # Allow voice to specify editor, e.g. "open hello world in vscode"
+                    editor_override = None
+                    _EDITOR_HINTS = {
+                        "vscode": "vscode",
+                        "vs code": "vscode",
+                        "visual studio code": "vscode",
+                        "notepad++": "notepadplusplus",
+                        "notepad plus plus": "notepadplusplus",
+                        "sublime": "sublime",
+                        "sublime text": "sublime",
+                        "atom": "atom",
+                        "notepad": "notepad",
+                    }
+                    for hint, key in _EDITOR_HINTS.items():
+                        suffix = f" in {hint}"
+                        if code_request.lower().endswith(suffix):
+                            editor_override = key
+                            code_request = code_request[: -len(suffix)].strip()
+                            break
+
                     # Generate the code
                     code, gen_msg = CodeGenerator.generate_code(code_request)
                     if code:
                         language = CodeGenerator.detect_language(code_request)
-                        msg = CodeGenerator.open_in_editor(code, language)
+                        msg = CodeGenerator.open_in_editor(code, language, editor=editor_override)
                         logger.info("[CodeGen] Opened in editor: %s", msg)
                     else:
                         msg = f"[ERROR] Could not generate code for: {code_request}"

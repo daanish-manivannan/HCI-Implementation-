@@ -327,42 +327,218 @@ print(f"Sum: {total}")''',
                 except:
                     pass
 
+    # Ordered list of editors to try in "auto" mode.
+    # Each entry: (display_name, [command, ...])
+    # The file path is appended as the last argument.
+    EDITOR_CHAINS = [
+        ("VS Code",        ["code"]),
+        ("Notepad++",      ["notepad++", "notepad++.exe"]),
+        ("Sublime Text",   ["subl", "sublime_text"]),
+        ("Atom",           ["atom"]),
+        ("Notepad",        ["notepad"]),  # Always available on Windows — last resort
+    ]
+
+    # Map config.PREFERRED_EDITOR string → command list (exact/forced pick)
+    EDITOR_COMMANDS = {
+        "vscode":          ["code"],
+        "notepadplusplus": ["notepad++", "notepad++.exe"],
+        "sublime":         ["subl", "sublime_text"],
+        "atom":            ["atom"],
+        "notepad":         ["notepad"],
+    }
+
+    # Known Windows installation paths to probe when the command is not on PATH.
+    # Each value is a list of glob-friendly partial paths under common roots.
+    _WIN_EDITOR_PATHS = {
+        "code": [
+            r"Microsoft VS Code\bin\code.cmd",
+            r"Microsoft VS Code\Code.exe",
+        ],
+        "notepad++": [
+            r"Notepad++\notepad++.exe",
+        ],
+        "subl": [
+            r"Sublime Text\subl.exe",
+            r"Sublime Text 3\subl.exe",
+            r"Sublime Text 4\subl.exe",
+        ],
+        "atom": [
+            r"atom\atom.exe",
+        ],
+    }
+
+    @classmethod
+    def _resolve_editor_exe(cls, cmd: str) -> str:
+        """
+        Return the best executable path for *cmd*.
+        1. If *cmd* is already on PATH, return it as-is.
+        2. Otherwise probe known Windows install locations.
+        Falls back to returning *cmd* unchanged so the caller can still try.
+        """
+        import shutil, os
+        if shutil.which(cmd):
+            return cmd
+        # Probe common install roots
+        roots = [
+            os.path.expandvars(r"%LOCALAPPDATA%\Programs"),
+            os.path.expandvars(r"%PROGRAMFILES%"),
+            os.path.expandvars(r"%PROGRAMFILES(X86)%"),
+        ]
+        for suffix_list in (cls._WIN_EDITOR_PATHS.get(cmd) or []):
+            for root in roots:
+                candidate = os.path.join(root, suffix_list)
+                if os.path.isfile(candidate):
+                    logger.debug("[CodeGen] Resolved '%s' -> %s", cmd, candidate)
+                    return candidate
+        return cmd  # give up — let the caller try anyway
+
     @staticmethod
-    def open_in_editor(code: str, language: str = "python") -> str:
+    def _try_launch_editor(commands: list, filepath: str) -> bool:
+        """Try each executable in *commands* until one succeeds. Returns True on success."""
+        import sys, shutil
+        for cmd in commands:
+            resolved = CodeGenerator._resolve_editor_exe(cmd)
+            # Verify the editor actually exists before trying to launch
+            if not shutil.which(resolved) and not os.path.isfile(resolved):
+                logger.debug("[CodeGen] Editor not found: %s", resolved)
+                continue
+            try:
+                if sys.platform == "win32":
+                    import subprocess as _sp
+                    _sp.Popen(
+                        f'cmd /c "{resolved}" "{filepath}"',
+                        shell=False,
+                        stdout=_sp.DEVNULL,
+                        stderr=_sp.DEVNULL,
+                    )
+                else:
+                    subprocess.Popen([resolved, filepath])
+                logger.info("[CodeGen] Launched '%s' with file: %s", resolved, filepath)
+                return True
+            except (FileNotFoundError, OSError) as exc:
+                logger.debug("[CodeGen] Editor '%s' failed: %s", resolved, exc)
+        return False
+
+    @staticmethod
+    def open_in_editor(code: str, language: str = "python",
+                       editor: str = None) -> str:
         """
-        Create a file and open in VS Code.
-        
-        Args:
-            code: Code content
-            language: Programming language
-        
-        Returns:
-            Status message
+        Open an editor and paste the generated code into it (hands-free).
+
+        Workflow:
+        1. Save code to a Desktop file as backup.
+        2. Launch the preferred editor (with file OR empty).
+        3. Wait for the editor to appear.
+        4. Copy code to clipboard and Ctrl+V paste into the window.
         """
+        import time, shutil
+
         try:
+            import config as _cfg
+            preferred = (editor or getattr(_cfg, "PREFERRED_EDITOR", "auto")).lower().strip()
+        except Exception:
+            preferred = editor.lower().strip() if editor else "auto"
+
+        try:
+            # ── 1. Save code to Desktop as backup ──
             ext = CodeGenerator.LANGUAGE_EXTENSIONS.get(language.lower(), ".py")
             desktop = os.path.expanduser("~/Desktop")
-            
-            # Create file with timestamp
-            import time
             filename = f"code_snippet_{int(time.time())}{ext}"
             filepath = os.path.join(desktop, filename)
-            
-            with open(filepath, 'w') as f:
+
+            with open(filepath, "w", encoding="utf-8") as f:
                 f.write(code)
-            
-            logger.info("[CodeGen] Created file: %s", filepath)
-            print(f"\n[SAVE LOCATION] Code saved to: {filepath}")
-            print(f"[FILE] {filename}\n")
-            
-            # Open in VS Code
-            try:
-                subprocess.Popen(["code", filepath])
-                logger.info("[CodeGen] Opened in VS Code: %s", filepath)
-                return f"[OK] Code saved to Desktop: {filename}"
-            except Exception as e:
-                logger.warning("[CodeGen] Could not open VS Code: %s", e)
-                return f"[OK] Code saved to Desktop: {filename}\n(VS Code not found, file is on Desktop)"
+            logger.info("[CodeGen] Saved code to: %s", filepath)
+
+            # ── 2. Copy code to clipboard ──
+            def _copy_to_clipboard(text):
+                try:
+                    import pyperclip
+                    pyperclip.copy(text)
+                    return
+                except Exception:
+                    pass
+                try:
+                    import tkinter as tk
+                    r = tk.Tk(); r.withdraw()
+                    r.clipboard_clear(); r.clipboard_append(text)
+                    r.update(); r.destroy()
+                except Exception:
+                    pass
+
+            _copy_to_clipboard(code)
+
+            # ── 3. Determine which editor to launch ──
+            _DISPLAY_NAMES = {
+                "vscode": "VS Code", "notepadplusplus": "Notepad++",
+                "sublime": "Sublime Text", "atom": "Atom", "notepad": "Notepad",
+            }
+            _LAUNCH_CMDS = {
+                "vscode": "code", "notepadplusplus": "notepad++",
+                "sublime": "subl", "atom": "atom", "notepad": "notepad",
+            }
+
+            if preferred in _LAUNCH_CMDS:
+                chain = [(preferred, _LAUNCH_CMDS[preferred])]
+                # Always add notepad as fallback if not already the preference
+                if preferred != "notepad":
+                    chain.append(("notepad", "notepad"))
+            else:
+                chain = [
+                    ("vscode", "code"), ("notepadplusplus", "notepad++"),
+                    ("sublime", "subl"), ("atom", "atom"), ("notepad", "notepad"),
+                ]
+
+            launched_as = None
+            use_paste = False  # whether we need to paste after opening
+
+            for key, exe in chain:
+                resolved = CodeGenerator._resolve_editor_exe(exe)
+                if not (shutil.which(resolved) or os.path.isfile(resolved)):
+                    logger.debug("[CodeGen] Editor not found: %s", resolved)
+                    continue
+                try:
+                    import subprocess as _sp
+                    if key == "notepad":
+                        # Open Notepad empty — we'll paste into it
+                        _sp.Popen("notepad", stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                        use_paste = True
+                    else:
+                        # Open editor with file path
+                        _sp.Popen(
+                            f'cmd /c "{resolved}" "{filepath}"',
+                            shell=False,
+                            stdout=_sp.DEVNULL, stderr=_sp.DEVNULL,
+                        )
+                    launched_as = _DISPLAY_NAMES.get(key, key.title())
+                    logger.info("[CodeGen] Launched %s (%s)", launched_as, resolved)
+                    break
+                except Exception as exc:
+                    logger.debug("[CodeGen] %s failed: %s", exe, exc)
+
+            if not launched_as:
+                # Absolute last resort
+                os.startfile(filepath)
+                return f"[OK] Code saved & opened: {filename}"
+
+            # ── 4. Wait then paste for Notepad (needs empty window + paste) ──
+            if use_paste:
+                time.sleep(1.5)
+                try:
+                    import pyautogui
+                    pyautogui.hotkey("ctrl", "v")
+                    logger.info("[CodeGen] Pasted %d chars into %s", len(code), launched_as)
+                except Exception as exc:
+                    logger.warning("[CodeGen] Paste failed: %s", exc)
+
+            return f"[OK] Opened in {launched_as}: {filename}"
+
         except Exception as e:
-            logger.error("[CodeGen] Error opening in editor: %s", e)
+            logger.error("[CodeGen] Error in open_in_editor: %s", e)
             return f"[ERROR] {str(e)}"
+
+    @staticmethod
+    def open_in_notepad(code: str, language: str = "python") -> str:
+        """Open code directly in Windows Notepad."""
+        return CodeGenerator.open_in_editor(code, language, editor="notepad")
+

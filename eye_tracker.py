@@ -12,6 +12,7 @@ from typing import Iterator, Optional, Tuple
 
 import cv2
 import numpy as np
+import mediapipe as mp
 
 import config
 from utils import eye_aspect_ratio
@@ -153,8 +154,6 @@ class EyeTracker:
     # ------------------------------------------------------------------ #
 
     def _open(self):
-        import mediapipe as mp
-
         self._mp_face_mesh      = mp.solutions.face_mesh
         self._mp_drawing        = mp.solutions.drawing_utils
         self._mp_drawing_styles = mp.solutions.drawing_styles

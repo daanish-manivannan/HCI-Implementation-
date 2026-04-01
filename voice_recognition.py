@@ -365,6 +365,17 @@ class Command(Enum):
     EXECUTE_CODE = auto()
     OPEN_CODE_IN_EDITOR = auto()
 
+    # New system commands
+    VOLUME_UP = auto()
+    VOLUME_DOWN = auto()
+    VOLUME_MUTE = auto()
+    BRIGHTNESS_UP = auto()
+    BRIGHTNESS_DOWN = auto()
+    TOGGLE_BLUETOOTH = auto()
+    MAXIMIZE_ALL = auto()
+    CUT = auto()
+    SEARCH_WEB = auto()
+
 
 VOICE_COMMAND_MAP = {
     # System control
@@ -386,14 +397,19 @@ VOICE_COMMAND_MAP = {
     # Navigation
     "scroll up": Command.SCROLL_UP,
     "scroll down": Command.SCROLL_DOWN,
+    "page up": Command.SCROLL_UP,
+    "page down": Command.SCROLL_DOWN,
     "go back": Command.GO_BACK,
     "go forward": Command.GO_FORWARD,
-    "back": Command.GO_BACK,         # shorthand alias
-    "forward": Command.GO_FORWARD,   # shorthand alias
+    "back": Command.GO_BACK,
+    "forward": Command.GO_FORWARD,
 
     # Editing
     "copy": Command.COPY,
     "paste": Command.PASTE,
+    "cut": Command.CUT,
+    "cut text": Command.CUT,
+    "cut the text": Command.CUT,
     "undo": Command.UNDO,
     "redo": Command.REDO,
     "select all": Command.SELECT_ALL,
@@ -409,9 +425,14 @@ VOICE_COMMAND_MAP = {
     "open browser": Command.OPEN_BROWSER,
     "browser": Command.OPEN_BROWSER,        # shorthand alias
     "new tab": Command.NEW_TAB,
+    "open new tab": Command.NEW_TAB,
     "close tab": Command.CLOSE_TAB,
     "switch tab": Command.SWITCH_TAB,
     "close window": Command.CLOSE_WINDOW,
+    "close this window": Command.CLOSE_WINDOW,
+    "close browser": Command.CLOSE_WINDOW,
+    "close app": Command.CLOSE_WINDOW,
+    "close this app": Command.CLOSE_WINDOW,
 
     # Screenshot
     "take screenshot": Command.TAKE_SCREENSHOT,
@@ -437,6 +458,42 @@ VOICE_COMMAND_MAP = {
     "generate code": Command.GENERATE_CODE,
     "execute code": Command.EXECUTE_CODE,
     "open code in editor": Command.OPEN_CODE_IN_EDITOR,
+
+    # Volume
+    "volume up": Command.VOLUME_UP,
+    "increase volume": Command.VOLUME_UP,
+    "louder": Command.VOLUME_UP,
+    "volume down": Command.VOLUME_DOWN,
+    "decrease volume": Command.VOLUME_DOWN,
+    "lower volume": Command.VOLUME_DOWN,
+    "quieter": Command.VOLUME_DOWN,
+    "mute": Command.VOLUME_MUTE,
+    "unmute": Command.VOLUME_MUTE,
+    "volume mute": Command.VOLUME_MUTE,
+
+    # Brightness
+    "brightness up": Command.BRIGHTNESS_UP,
+    "increase brightness": Command.BRIGHTNESS_UP,
+    "brighter": Command.BRIGHTNESS_UP,
+    "brightness down": Command.BRIGHTNESS_DOWN,
+    "decrease brightness": Command.BRIGHTNESS_DOWN,
+    "dimmer": Command.BRIGHTNESS_DOWN,
+
+    # Bluetooth
+    "toggle bluetooth": Command.TOGGLE_BLUETOOTH,
+    "bluetooth": Command.TOGGLE_BLUETOOTH,
+    "turn on bluetooth": Command.TOGGLE_BLUETOOTH,
+    "turn off bluetooth": Command.TOGGLE_BLUETOOTH,
+
+    # Maximize / restore
+    "maximize all": Command.MAXIMIZE_ALL,
+    "restore all": Command.MAXIMIZE_ALL,
+    "show all windows": Command.MAXIMIZE_ALL,
+
+    # Theme aliases for dark mode
+    "switch theme": Command.TOGGLE_DARK_MODE,
+    "change theme": Command.TOGGLE_DARK_MODE,
+    "change device theme": Command.TOGGLE_DARK_MODE,
 }
 
 
@@ -488,7 +545,46 @@ def phrase_to_command(phrase: str) -> Tuple[Optional[Command], str, float]:
     logger.info("[PHRASE_TO_COMMAND] INPUT: '%s'", phrase)
     
     phrase = phrase.strip().lower()
-    
+
+    # ── Parameterized scroll: "scroll [N] [lines/pages] up/down" ──
+    import re
+    scroll_match = re.match(
+        r'^scroll\s+(?:(\d+)\s+)?'
+        r'(?:(lines?|pages?)\s+)?'
+        r'(up|down)$', phrase
+    )
+    if not scroll_match:
+        # Also match: "scroll up/down [N] [lines/pages]"
+        scroll_match = re.match(
+            r'^scroll\s+(up|down)'
+            r'(?:\s+(\d+))?'
+            r'(?:\s+(lines?|pages?))?$', phrase
+        )
+        if scroll_match:
+            direction = scroll_match.group(1)
+            amount = scroll_match.group(2)
+            unit = scroll_match.group(3)
+            scroll_match = type('M', (), {
+                'group': lambda self, i: [None, amount, unit, direction][i]
+            })()
+    if scroll_match:
+        raw_amount = scroll_match.group(1)
+        unit = (scroll_match.group(2) or "lines").rstrip('s')
+        direction = scroll_match.group(3)
+        n = int(raw_amount) if raw_amount else 1
+        # 1 page ≈ 15 scroll lines
+        lines = n * 15 if unit == "page" else n * 3
+        cmd = Command.SCROLL_UP if direction == "up" else Command.SCROLL_DOWN
+        logger.info("Voice: %s x%d (payload=%d lines)", cmd.name, n, lines)
+        return cmd, str(lines), 1.0
+
+    # Also handle bare "page up" / "page down" with page-sized scroll
+    if phrase in ("page up", "page down"):
+        direction = "up" if "up" in phrase else "down"
+        cmd = Command.SCROLL_UP if direction == "up" else Command.SCROLL_DOWN
+        logger.info("Voice: %s (1 page = 15 lines)", cmd.name)
+        return cmd, "15", 1.0
+
     # Check for TYPE_TEXT command (highest priority)
     if phrase.startswith("type "):
         text = phrase[5:].strip()
@@ -510,22 +606,83 @@ def phrase_to_command(phrase: str) -> Tuple[Optional[Command], str, float]:
                     logger.info("Voice: Extracted OPEN_APP from compound phrase, app='%s'", app_name)
                     return Command.OPEN_APP, app_name, 0.85
     
-    # Check for OPEN_APP command: "open [app]"
-    if phrase.startswith("open ") and not any(x in phrase for x in ["folder", "settings", "calculator", "browser", "website"]):
-        app_name = phrase[5:].strip()
-        if app_name:
-            logger.info("Voice: OPEN_APP with payload='%s'", app_name)
-            return Command.OPEN_APP, app_name, 0.95
-    
-    # Check for OPEN_WEBSITE command: "open [website]"
-    if phrase.startswith("open website ") or phrase.startswith("browse "):
-        if phrase.startswith("open website "):
-            url = phrase[13:].strip()
-        else:
-            url = phrase[7:].strip()
+    # "browse X" -> OPEN_WEBSITE
+    if phrase.startswith("browse "):
+        url = phrase[7:].strip()
         if url:
-            logger.info("Voice: OPEN_WEBSITE with payload='%s'", url)
+            logger.info("Voice: OPEN_WEBSITE (browse) payload='%s'", url)
             return Command.OPEN_WEBSITE, url, 0.95
+
+    # Check for OPEN_APP command: "open [app]"
+    # But first: detect URLs (contains dot), known websites, and known command aliases
+    if phrase.startswith("open "):
+        rest = phrase[5:].strip()
+
+        # "open X in browser" -> OPEN_WEBSITE  (must be checked BEFORE exclusion list)
+        if rest.endswith(" in browser"):
+            site = rest[:-len(" in browser")].strip()
+            _WEBSITE_MAP = {
+                "youtube": "youtube.com", "google": "google.com",
+                "facebook": "facebook.com", "twitter": "twitter.com",
+                "instagram": "instagram.com", "reddit": "reddit.com",
+                "github": "github.com", "linkedin": "linkedin.com",
+                "whatsapp": "web.whatsapp.com", "amazon": "amazon.com",
+                "netflix": "netflix.com", "spotify": "open.spotify.com",
+            }
+            url = _WEBSITE_MAP.get(site, site + ".com" if "." not in site else site)
+            logger.info("Voice: OPEN_WEBSITE (in browser) payload='%s'", url)
+            return Command.OPEN_WEBSITE, url, 0.95
+
+        # Skip if phrase matches a more specific pattern handled elsewhere
+        if any(x in phrase for x in ["folder", "settings", "calculator", "browser"]):
+            pass  # fall through to exact/fuzzy match below
+
+        # "open new tab" -> NEW_TAB
+        elif rest in ("new tab", "a new tab"):
+            logger.info("Voice: NEW_TAB from 'open new tab'")
+            return Command.NEW_TAB, "", 1.0
+
+        # URL detection: contains a dot → treat as website
+        elif "." in rest:
+            url = rest.replace(" ", "")
+            logger.info("Voice: OPEN_WEBSITE (URL detected) payload='%s'", url)
+            return Command.OPEN_WEBSITE, url, 0.95
+
+        # Well-known website names without "in browser" suffix
+        elif rest in ("youtube", "google", "facebook", "twitter",
+                      "instagram", "reddit", "linkedin",
+                      "amazon", "netflix"):
+            _WEBSITE_MAP = {
+                "youtube": "youtube.com", "google": "google.com",
+                "facebook": "facebook.com", "twitter": "twitter.com",
+                "instagram": "instagram.com", "reddit": "reddit.com",
+                "linkedin": "linkedin.com", "amazon": "amazon.com",
+                "netflix": "netflix.com",
+            }
+            url = _WEBSITE_MAP[rest]
+            logger.info("Voice: OPEN_WEBSITE (known site) payload='%s'", url)
+            return Command.OPEN_WEBSITE, url, 0.90
+
+        # Otherwise it's a regular app launch
+        elif rest and "website" not in rest:
+            logger.info("Voice: OPEN_APP with payload='%s'", rest)
+            return Command.OPEN_APP, rest, 0.95
+
+    # "close [app]" → CLOSE_WINDOW (Alt+F4)
+    if phrase.startswith("close "):
+        rest = phrase[6:].strip()
+        if rest in ("browser", "this window", "this app", "window", "app",
+                    "this", "it") or rest:
+            logger.info("Voice: CLOSE_WINDOW from 'close %s'", rest)
+            return Command.CLOSE_WINDOW, rest, 0.90
+
+    # "search X" → open web search
+    if phrase.startswith("search "):
+        query = phrase[7:].strip()
+        if query:
+            url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
+            logger.info("Voice: OPEN_WEBSITE (search) payload='%s'", url)
+            return Command.OPEN_WEBSITE, url, 0.90
     
     # Check for OPEN_FOLDER command: "open folder [path]"
     if phrase.startswith("open folder "):
@@ -534,12 +691,35 @@ def phrase_to_command(phrase: str) -> Tuple[Optional[Command], str, float]:
             logger.info("Voice: OPEN_FOLDER with payload='%s'", folder_path)
             return Command.OPEN_FOLDER, folder_path, 0.95
     
-    # Check for GENERATE_CODE command: "generate [code] in [language]" or "generate [code]"
-    if phrase.startswith("generate "):
-        code_request = phrase[9:].strip()
-        if code_request:
-            logger.info("Voice: GENERATE_CODE with payload='%s'", code_request)
-            return Command.GENERATE_CODE, code_request, 0.95
+    # Check for GENERATE_CODE command: "generate [code] in [language]" / "generate [code] in notepad"
+    # Also matches "generator ..." (common SR mishearing of "generate")
+    _GENERATE_PREFIXES = ("generate ", "generator ")
+    for _gen_prefix in _GENERATE_PREFIXES:
+        if phrase.startswith(_gen_prefix):
+            code_request = phrase[len(_gen_prefix):].strip()
+            # Strip destination/editor hints — these are forwarded to the interpreter
+            # so the code description is clean.
+            _DESTINATION_SUFFIXES = [
+                # Notepad variants
+                " in notepad", " in editor", " on notepad", " to notepad",
+                # VS Code variants
+                " in vscode", " in vs code", " in visual studio code",
+                " in code", " in vs",
+                # Notepad++ variants
+                " in notepad++", " in notepad plus plus", " in npp",
+                # Sublime variants
+                " in sublime", " in sublime text",
+                # Atom
+                " in atom",
+            ]
+            for _sfx in _DESTINATION_SUFFIXES:
+                if code_request.endswith(_sfx):
+                    code_request = code_request[: -len(_sfx)].strip()
+                    break
+            if code_request:
+                logger.info("Voice: GENERATE_CODE with payload='%s'", code_request)
+                return Command.GENERATE_CODE, code_request, 0.95
+            break
     
     # Check for EXECUTE_CODE command: "execute [code description]"
     if phrase.startswith("execute "):

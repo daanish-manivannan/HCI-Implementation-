@@ -1,207 +1,130 @@
-# Voice Commands - Cheat Sheet
+# Voice Commands — Cheat Sheet
 
-## 🆕 NEW Commands (Try These!)
+## 🖱️ Mouse & Click
+```
+click              │  right click        │  double click
+```
 
-### App Launcher
+## 📜 Scroll & Navigation
+```
+scroll up                    │  scroll down
+page up                      │  page down
+scroll 3 pages down          │  scroll 5 lines up
+scroll down 2 pages          │  scroll up 10 lines
+go back                      │  go forward
+```
+
+## ✂️ Editing
+```
+copy       │  paste      │  cut       │  undo       │  redo
+select all │  type [text]
+```
+
+## 🔍 Zoom
+```
+zoom in    │  zoom out   │  zoom reset
+```
+
+## 🌐 Browser & Tabs
+```
+open browser                       ← Opens default browser
+new tab          │  close tab      │  switch tab
+close window     │  close browser  │  close this window
+```
+
+## 🚀 App Launcher
 ```
 open [app]
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-open chrome           │  open word           │  open vscode
-open firefox          │  open excel          │  open discord
-open notepad          │  open teams          │  open zoom
-open calculator       │  open outlook        │  open steam
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+open chrome       │  open firefox     │  open edge
+open notepad      │  open calculator  │  open word
+open excel        │  open powerpoint  │  open outlook
+open vs code      │  open vscode      │  open sublime
+open notepad plus plus               │  open discord
+open teams        │  open zoom        │  open whatsapp
+open spotify      │  open obsidian    │  open steam
+open file explorer│  open terminal    │  open paint
 ```
 
-### System Control
+## 🌍 Websites
 ```
-minimize all          ← Hide all windows
-toggle dark mode      ← Switch theme
-lock screen           ← Lock Windows
-open settings         ← Settings app
-open settings sound   ← Sound settings (Categories: display, keyboard, mouse, wifi, etc)
-refresh screen        ← Refresh desktop
-open calculator       ← Calculator
-```
-
-### Browse Web
-```
-open website google.com        ← Google
-browse youtube.com             ← YouTube
-open website github.com        ← GitHub
+open youtube               ← Opens youtube.com
+open google                ← Opens google.com
+open youtube.com           ← Opens any URL with a dot
+open youtube in browser    ← Explicit browser open
+browse youtube.com         ← Same as above
+search youtube             ← Google search for "youtube"
+search how to code python  ← Google search
 ```
 
-### Code Generation ⚡
+## ⚡ Code Generation
 ```
-generate [snippet]                    ← Python (default)
-generate [snippet] in [language]      ← Specific language
-execute [snippet]                     ← Run code
+generate [snippet]                       ← Python (default)
+generate [snippet] in [language]         ← Specific language
+generate [snippet] in vscode             ← Open in VS Code
+generate [snippet] in notepad++          ← Open in Notepad++
+generate [snippet] in sublime            ← Open in Sublime Text
+execute [snippet]                        ← Run code and show output
 ```
-
-**Snippets Available**: hello world, palindrome, factorial, fibonacci, prime number, reverse string, sum numbers
+**Snippets**: hello world, palindrome, factorial, fibonacci, prime number, reverse string, sum numbers
 **Languages**: python, java, javascript, cpp, csharp
+**Editors**: vscode, notepad++, sublime, atom, notepad
 
-### Examples
+> Set `PREFERRED_EDITOR` in `config.py` (`"auto"`, `"vscode"`, etc.)
+
+## 🖥️ System Control
 ```
-generate hello world
-generate palindrome in python
-generate fibonacci in javascript
-execute hello world
-execute factorial in java
+minimize all       │  maximize all      │  show desktop
+toggle dark mode   │  change theme      │  switch theme
+lock screen        │  open settings     │  refresh screen
+take screenshot
 ```
+
+## 🔊 Volume & Brightness
+```
+volume up    │  increase volume  │  louder
+volume down  │  decrease volume  │  quieter
+mute         │  unmute
+
+brightness up   │  increase brightness  │  brighter
+brightness down │  decrease brightness  │  dimmer
+```
+
+## 📶 Connectivity
+```
+bluetooth              ← Opens Bluetooth settings
+turn on bluetooth      │  turn off bluetooth
+```
+
+## ⚙️ Settings
+```
+open settings                  ← Main settings
+open settings sound            ← Sound settings
+open settings display          ← Display settings
+open settings bluetooth        ← Bluetooth settings
+open settings personalization  ← Theme/wallpaper
+open settings windows update   ← Windows Update
+```
+**Categories**: sound, display, keyboard, mouse, wifi, bluetooth, battery, apps, personalization, accounts, updates, privacy, network
 
 ---
 
-## 📋 EXISTING Commands (Still Work!)
+## 🎯 Quick Test Sequence
 
-### Navigation
-```
-scroll up      │  scroll down      │  go back      │  go forward
-```
-
-### Clicking
-```
-click          │  double click     │  right click
-```
-
-### Editing
-```
-copy           │  paste            │  undo         │  redo
-select all     │  type [text]      │  zoom in      │  zoom out
-zoom reset     │  take screenshot
-```
-
-### Browser
-```
-new tab        │  close tab        │  switch tab   │  open browser
-close window
-```
+1. `"open chrome"` → Chrome opens ✓
+2. `"open youtube"` → YouTube opens in browser ✓
+3. `"scroll 3 pages down"` → Scrolls 3 pages ✓
+4. `"generate hello world"` → Code opens in editor ✓
+5. `"volume up"` → Volume increases ✓
+6. `"close window"` → Window closes ✓
 
 ---
 
-## 🎯 Common Usage Patterns
+## 💡 Tips
 
-**Pattern 1**: Launch App + Browse
-```
-"open chrome" → "open website youtube.com"
-```
-
-**Pattern 2**: Generate & Run Code
-```
-"generate hello world" → "execute hello world"
-```
-
-**Pattern 3**: Quick Coding
-```
-"generate palindrome in python" → "execute palindrome in python"
-```
-
-**Pattern 4**: System Control
-```
-"minimize all" → "toggle dark mode" → "lock screen"
-```
-
----
-
-## 📊 Format Reference
-
-| Command Type | Format | Example |
-|--------------|--------|---------|
-| App launcher | `open [app]` | `open chrome` |
-| Web browse | `open website [url]` | `open website google.com` |
-| System | `[action]` | `minimize all` |
-| Code gen | `generate [code]` | `generate hello world` |
-| Code exec | `execute [code]` | `execute palindrome` |
-
----
-
-## ✅ Quick Test Sequence
-
-1. Say: "open notepad" → Notepad opens ✓
-2. Say: "generate hello world" → Message appears ✓
-3. Say: "execute hello world" → Output shown ✓
-4. Say: "click" → Mouse clicks (test existing) ✓
-
-If all 4 work = ✅ Everything is working!
-
----
-
-## 🚨 If Something Doesn't Work
-
-| Problem | Solution |
-|---------|----------|
-| App won't open | Check app name spelling, ensure installed |
-| Code won't run | Check Internet (for Google Speech Rec), verify Python installed |
-| Existing commands broken | Restart application |
-| Unclear recognition | Speak more clearly, repeat command |
-
----
-
-## 💡 Pro Tips
-
-- Speak naturally, pause between words
-- "open chrome" works faster than "please open chrome"
-- Language defaults to Python - specify if needed
-- All 28+ original commands still work perfectly
-- No need to restart app for new features
-- Dark mode toggle needs admin on some systems
-
----
-
-## 🎮 Quick Commands Reference Card
-
-**Print this page for quick reference!**
-
-```
-MOST USED (Try These First)
-┌─────────────────────────────────────┐
-│ open chrome                         │
-│ open website google.com             │
-│ generate hello world                │
-│ execute hello world                 │
-│ minimize all                        │
-│ click                               │
-│ scroll up                           │
-│ copy                                │
-└─────────────────────────────────────┘
-
-NEW APPS AVAILABLE (Say "open [app]")
-┌─────────────────────────────────────┐
-│ Chrome, Firefox, Edge               │
-│ Word, Excel, PowerPoint, Outlook    │
-│ VS Code, Visual Studio, Python      │
-│ Notepad, Calculator, Cmd, Teams     │
-│ Discord, Zoom, Telegram, Steam      │
-└─────────────────────────────────────┘
-
-CODE SNIPPETS (Say "generate [snippet]")
-┌─────────────────────────────────────┐
-│ hello world      │ palindrome        │
-│ factorial        │ fibonacci         │
-│ prime number     │ reverse string    │
-│ sum numbers      │                   │
-└─────────────────────────────────────┘
-
-SYSTEM COMMANDS
-┌─────────────────────────────────────┐
-│ minimize all          (Hide windows) │
-│ toggle dark mode      (Switch theme) │
-│ lock screen           (Lock Windows) │
-│ open settings         (Settings app) │
-│ refresh screen        (Refresh desk) │
-└─────────────────────────────────────┘
-```
-
----
-
-## 🔗 More Information
-
-- Full guide: Read `WINDOWS_AND_CODEGEN_GUIDE.md`
-- Technical details: Read `NEW_FEATURES_SUMMARY.md`
-- Quick reference: This file!
-
----
-
-**Now start speaking! 🎤**
-
-Commands work right now - no setup needed! 🚀
-
+- Speak naturally — pause briefly between words
+- `"open [app]"` tries built-in apps first, then PATH, then shell
+- Websites, URLs (with dots), and well-known sites auto-detected
+- `"close [anything]"` sends Alt+F4 to the foreground window
+- `"search [query]"` does a Google search
+- Scroll amounts: **lines** (3 per unit) or **pages** (15 per unit)

@@ -20,6 +20,23 @@ CURSOR_SMOOTHING = 0.12
 # Normalised iris offset smaller than this is ignored (dead-zone)
 GAZE_DEADZONE = 0.015
 
+# ─── Head / Iris Range Remapping ────────────────────────────────────────────
+# The comfortable iris-movement range within the camera frame (0.0–1.0).
+# MediaPipe iris landmarks only travel a fraction of the full 0–1 range —
+# so we remap [HEAD_RANGE_MIN_X .. HEAD_RANGE_MAX_X] → [0 .. screen_width].
+#
+# ↓ DECREASE these values to need LESS head movement (more sensitive)
+# ↑ INCREASE these values to need MORE head movement (less sensitive)
+#
+# Typical comfortable ranges:
+#   Very sensitive  (small twitches reach edges): 0.38 / 0.62
+#   Balanced (default, recommended):              0.33 / 0.67
+#   Less sensitive  (big movements needed):       0.25 / 0.75
+HEAD_RANGE_MIN_X = 0.33   # iris X below this = left edge of screen
+HEAD_RANGE_MAX_X = 0.67   # iris X above this = right edge of screen
+HEAD_RANGE_MIN_Y = 0.30   # iris Y below this = top edge of screen
+HEAD_RANGE_MAX_Y = 0.70   # iris Y above this = bottom edge of screen
+
 # ─── Blink Detection ────────────────────────────────────────────────────────
 # Eye Aspect Ratio below this threshold → eye considered CLOSED
 EAR_THRESHOLD = 0.21
@@ -120,7 +137,7 @@ MAX_NUM_FACES            = 1
 REFINE_LANDMARKS         = True   # enables iris landmarks 468-477
 MIN_DETECTION_CONFIDENCE = 0.7
 MIN_TRACKING_CONFIDENCE  = 0.7
-MEDIAPIPE_FACE_LANDMARK_MODEL_PATH = None  # Required for MediaPipe Tasks API (new MP version with mp.tasks)
+MEDIAPIPE_FACE_LANDMARK_MODEL_PATH = "face_landmarker.task"  # Required for MediaPipe Tasks API (new MP version with mp.tasks)
 
 # ─── MediaPipe landmark indices ─────────────────────────────────────────────
 # Right eye (camera-left = user's right)
@@ -154,10 +171,31 @@ LEFT_EYE_RIGHT_CORNER  = 263
 SCROLL_AMOUNT = 3
 SCROLL_LINES = 3
 SCROLL_ZONE_FRACTION = 0.08
+
+# ─── LLM / Ollama Integration ──────────────────────────────────────────────
+# Enable LLM features (voice command enhancement, reasoning)
+LLM_ENABLED = True
+LLM_OLLAMA_HOST = "localhost"        # Ollama server host
+LLM_OLLAMA_PORT = 11434              # Ollama server port (standard: 11434)
+LLM_TIMEOUT = 30.0                   # Request timeout in seconds
+LLM_MODEL = None                      # Auto-select best model (None = auto-detect)
+# Preference order (auto selected - LLAMA FIRST):
+#   1. "llama3:8b"           - Primary choice (8B params, ~4.7 GB) - BEST QUALITY
+#   2. "llama3.2:3b"         - Lightweight fallback (3B params, ~2.0 GB)
+#   3. "qwen2.5-coder:7b"    - Alternative (7B params, good for code)
+LLM_ENHANCE_VOICE_COMMANDS = True     # Use LLM to enhance voice command interpretation
+
 # ─── Cursor & Click behavior ───────────────────────────────────────
 PYAUTOGUI_FAILSAFE = True
 PYAUTOGUI_PAUSE = 0.0
 CLICK_COOLDOWN_SEC = 0.2
+# ─── Code Generation / Editor ───────────────────────────────────────────────
+# Preferred editor for voice-driven code generation.
+# Options: "notepad" | "vscode" | "notepadplusplus" | "sublime" | "atom" | "auto"
+# "notepad" = open Notepad and paste code (default, best for hands-free)
+# "auto"    = try VS Code → Notepad++ → Sublime → Notepad
+PREFERRED_EDITOR = "notepad"
+
 # ─── Debug / UI ─────────────────────────────────────────────────────────────
 SHOW_LANDMARKS   = True
 SHOW_EAR_VALUE   = True

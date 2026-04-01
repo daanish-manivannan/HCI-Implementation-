@@ -6,208 +6,180 @@ Built with Python, MediaPipe, OpenCV, SpeechRecognition, and PyAutoGUI.
 
 ---
 
-## Table of Contents
+## Quick Start
 
-1. [Overview](#overview)
-2. [System Architecture](#system-architecture)
-3. [Module Descriptions](#module-descriptions)
-4. [Installation](#installation)
-5. [Usage](#usage)
-6. [Controls Reference](#controls-reference)
-7. [Calibration Guide](#calibration-guide)
-8. [Voice Commands](#voice-commands)
-9. [Blink Gestures](#blink-gestures)
-10. [Configuration Tuning](#configuration-tuning)
-11. [Troubleshooting](#troubleshooting)
+### Prerequisites
 
----
+- **Python 3.10+** (tested on 3.13)
+- **Webcam** (any USB or built-in camera)
+- **Microphone** (for voice commands)
+- **Windows 10/11** (primary target; Linux/macOS partial support)
+- **Internet connection** (for Google Speech Recognition; offline via PocketSphinx)
 
-## Overview
+### 1. Clone & Setup
 
-This system allows a user to interact with a computer entirely hands-free by combining:
+```bash
+git clone <repo-url>
+cd HCI-Implementation-
 
-- **Eye Tracking** — iris position via MediaPipe Face Mesh drives the cursor
-- **Blink Detection** — Eye Aspect Ratio (EAR) classifies single, double, hold, and wink blinks as click/drag/scroll actions
-- **Voice Commands** — continuous background speech recognition converts spoken phrases into system commands
+# Create virtual environment
+python -m venv venv
 
-No specialised hardware is required. A standard USB webcam and a microphone are sufficient.
+# Activate it
+venv\Scripts\activate          # Windows (cmd)
+venv\Scripts\Activate.ps1      # Windows (PowerShell)
+source venv/bin/activate       # Linux / macOS
+```
+
+### 2. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+**Windows extras** (if PyAudio fails):
+```bash
+pip install pipwin
+pipwin install pyaudio
+```
+
+**Linux extras**:
+```bash
+sudo apt-get install -y python3-dev portaudio19-dev python3-tk
+```
+
+### 3. Run
+
+```bash
+python main.py                 # Full system (eye + voice)
+python main.py --no-gaze       # Voice-only (no camera)
+python main.py --no-voice      # Eye-only (no microphone)
+python main.py --debug         # With debug logging
+```
+
+### 4. Calibrate
+
+1. Look directly at the **centre of your screen**
+2. Hold still while the **yellow bar** fills (~2 seconds)
+3. Once **"Calibrated OK"** appears, you're ready
+
+Re-calibrate anytime: press **C** or say **"calibrate"**.
 
 ---
 
 ## System Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                        Hands-Free HCI System                             │
-│                                                                          │
-│  ┌────────────┐   BGR frame   ┌──────────────────┐                       │
-│  │   Webcam   │ ────────────▶ │   EyeTracker     │  GazeResult          │
-│  │  (OpenCV)  │               │  (MediaPipe FM)  │ ─────────┐           │
-│  └────────────┘               └──────────────────┘          │           │
-│                                                              ▼           │
-│  ┌────────────┐  AudioData    ┌──────────────────┐   ┌──────────────┐   │
-│  │ Microphone │ ────────────▶ │ VoiceRecognizer  │   │    Blink     │   │
-│  │ (PyAudio)  │  [thread]     │  (SpeechRecog.)  │   │  Detector   │   │
-│  └────────────┘               └─────────┬────────┘   └──────┬───────┘   │
-│                                         │ phrase             │ event     │
-│                                         ▼                    ▼           │
-│                               ┌──────────────────────────────────────┐  │
-│                               │        CommandInterpreter            │  │
-│                               │  • maps phrases → action tokens      │  │
-│                               │  • maps blink gestures → actions     │  │
-│                               │  • manages mode state machine        │  │
-│                               └──────────────┬───────────────────────┘  │
-│                                              │ action token              │
-│                                              ▼                           │
-│                               ┌──────────────────────┐                  │
-│                               │   CursorController   │                  │
-│                               │  (PyAutoGUI)         │                  │
-│                               │  • EMA smooth move   │                  │
-│                               │  • click / drag      │                  │
-│                               │  • hotkeys           │                  │
-│                               └──────────────────────┘                  │
-│                                                                          │
-│  ┌──────────────────────────────────────────────────────┐               │
-│  │  HUD Overlay (OpenCV draw)                           │               │
-│  │  FPS · Mode · EAR bars · Gaze arrow · Status panel  │               │
-│  └──────────────────────────────────────────────────────┘               │
-└──────────────────────────────────────────────────────────────────────────┘
+  Webcam ──▶ EyeTracker (MediaPipe) ──▶ GazeResult ──┐
+                                                       ▼
+  Microphone ──▶ VoiceRecognizer ──▶ CommandInterpreter ──▶ CursorController
+                                            │                  (PyAutoGUI)
+                                    BlinkDetector ─────────┘
 ```
-
----
-
-## Module Descriptions
 
 | File | Purpose |
 |------|---------|
-| `main.py` | Entry point. Opens webcam, orchestrates the main loop, handles keyboard shortcuts. |
-| `config.py` | Central configuration. All thresholds, sensitivities, and feature flags live here. |
-| `modules/eye_tracker.py` | Wraps MediaPipe FaceMesh. Detects 478 facial landmarks, extracts iris centres, computes normalised gaze offset, handles calibration. |
-| `modules/blink_detector.py` | Computes Eye Aspect Ratio (EAR) per eye. State-machine classifies SINGLE / DOUBLE / HOLD blinks and left/right winks. |
-| `modules/cursor_controller.py` | Translates gaze offsets and action tokens into OS cursor events via PyAutoGUI. Manages drag state. |
-| `modules/voice_recognition.py` | Background daemon thread. Continuously listens on the microphone using SpeechRecognition (Google + Sphinx fallback). Phrase matching helper. |
-| `modules/command_interpreter.py` | Maps blink events and voice phrases to action tokens. Manages NORMAL / SCROLL / DRAG / PAUSED mode state machine. |
-| `modules/overlay.py` | Real-time HUD renderer. Draws eye mesh, iris rings, gaze arrow, EAR bars, and status panel onto the preview window. |
-
----
-
-## Installation
-
-### 1. Create a virtual environment
-
-```bash
-python -m venv venv
-source venv/bin/activate        # Linux / macOS
-venv\Scripts\activate.bat       # Windows
-```
-
-### 2. Install system dependencies
-
-**Linux (Ubuntu / Debian)**
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-    python3-dev portaudio19-dev \
-    python3-tk python3-xlib libespeak-dev
-```
-
-**macOS**
-```bash
-brew install portaudio
-```
-
-### 3. Install Python packages
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Usage
-
-```bash
-# Full system (eye tracking + voice)
-python main.py
-
-# Voice-only (no camera required)
-python main.py --no-gaze
-
-# Eye-only (no microphone)
-python main.py --no-voice
-
-# Debug logging
-python main.py --debug
-```
-
----
-
-## Controls Reference
-
-| Key | Action |
-|-----|--------|
-| `Q` / `ESC` | Quit |
-| `C` | Re-calibrate gaze |
-| `P` | Pause / resume |
-| `H` | Toggle HUD |
-| `S` | Save screenshot |
-
----
-
-## Calibration Guide
-
-On first launch:
-1. Look directly at the **centre of your screen**.
-2. Hold still while the **yellow calibration bar** fills (~2 seconds).
-3. Once **"Calibrated OK"** appears, cursor control is active.
-
-Re-calibrate any time by pressing **C** or saying **"calibrate"**.
+| `main.py` | Entry point, webcam loop, keyboard shortcuts |
+| `config.py` | All thresholds, sensitivities, feature flags |
+| `eye_tracker.py` | MediaPipe Face Mesh → iris tracking → gaze offset |
+| `blink_detector.py` | EAR-based blink classification (single/double/hold/wink) |
+| `cursor_controller.py` | Gaze → cursor movement via PyAutoGUI |
+| `voice_recognition.py` | Background speech recognition + phrase→command parsing |
+| `command_interpreter.py` | Maps voice/blink events → OS actions |
+| `code_generator.py` | Voice-driven code snippet generation |
+| `windows_commands.py` | Windows-specific app launch, settings, volume, etc. |
+| `overlay.py` | HUD renderer (eye mesh, EAR bars, status panel) |
 
 ---
 
 ## Voice Commands
 
-| Category | Phrases | Action |
-|----------|---------|--------|
-| Mouse | "click", "right click", "double click" | Mouse buttons |
-| Mouse | "drag", "drop" | Drag and drop |
-| Scroll | "scroll up/down/left/right" | Scroll |
-| Navigate | "go back", "go forward", "page up/down" | Navigation |
-| Edit | "copy", "paste", "cut", "undo", "redo" | Clipboard |
-| Window | "close window", "minimize", "maximize" | Window management |
-| Tabs | "new tab", "close tab", "next tab" | Tab control |
-| Zoom | "zoom in", "zoom out", "reset zoom" | Zoom |
-| Type | "type \<words\>" | Types the following text |
-| Keys | "press enter/escape/tab/space" | Key presses |
-| System | "pause", "resume", "calibrate" | System control |
-| System | "take screenshot" | Screenshot |
+> Full reference: [`VOICE_CHEAT_SHEET.md`](VOICE_CHEAT_SHEET.md)
+
+### Mouse & Navigation
+| Command | Action |
+|---------|--------|
+| `click` / `right click` / `double click` | Mouse buttons |
+| `scroll up` / `scroll down` | Scroll (3 lines) |
+| `scroll 3 pages down` | Scroll with amount |
+| `page up` / `page down` | Scroll one page |
+| `go back` / `go forward` | Browser navigation |
+
+### Editing
+| Command | Action |
+|---------|--------|
+| `copy` / `paste` / `cut` | Clipboard |
+| `undo` / `redo` | History |
+| `select all` / `select` | Selection |
+| `type hello world` | Type text |
+| `zoom in` / `zoom out` / `zoom reset` | Zoom |
+
+### Apps & Websites
+| Command | Action |
+|---------|--------|
+| `open chrome` / `open vs code` / `open notepad` | Launch apps |
+| `open youtube` / `open google` | Open websites |
+| `open youtube.com` | Any URL with a dot |
+| `browse youtube.com` | Explicit browse |
+| `search how to code python` | Google search |
+| `close browser` / `close this window` | Close (Alt+F4) |
+| `new tab` / `close tab` / `switch tab` | Tab control |
+
+### Code Generation
+| Command | Action |
+|---------|--------|
+| `generate hello world` | Generate & open in Notepad |
+| `generate fibonacci in vscode` | Generate & open in VS Code |
+| `generate palindrome in notepad` | Explicit Notepad |
+| `execute hello world` | Generate, run & show output |
+
+### System Control
+| Command | Action |
+|---------|--------|
+| `volume up` / `volume down` / `mute` | Volume |
+| `increase brightness` / `decrease brightness` | Brightness |
+| `toggle bluetooth` | Bluetooth settings |
+| `minimize all` / `maximize all` | Window management |
+| `toggle dark mode` / `change theme` | Theme switch |
+| `lock screen` | Lock PC |
+| `open settings sound` | Settings category |
+| `take screenshot` | Screenshot |
 
 ---
 
 ## Blink Gestures
 
-| Gesture | How to Perform | Action |
-|---------|----------------|--------|
+| Gesture | How | Action |
+|---------|-----|--------|
 | Single blink | Normal blink (both eyes) | Left click |
 | Double blink | Two quick blinks | Double click |
 | Hold blink | Eyes closed ~1 second | Right click |
 | Left wink | Left eye only | Drag toggle |
-| Right wink | Right eye only | Scroll mode toggle |
-| Left wink hold | Left eye closed ~1s | Zoom in |
-| Right wink hold | Right eye closed ~1s | Zoom out |
+| Right wink | Right eye only | Scroll mode |
 
 ---
 
-## Configuration Tuning
+## Configuration
 
-Edit `config.py` to customise behaviour:
+Edit `config.py` to customise:
 
 ```python
-GAZE_SENSITIVITY_X  = 8.0   # Cursor speed (raise for wider screens)
-SMOOTHING_FACTOR    = 0.25  # 0.1 = silky smooth, 0.5 = responsive
-EAR_CLOSE_THRESHOLD = 0.20  # Blink sensitivity (lower = more sensitive)
+# Cursor
+GAZE_SENSITIVITY_X  = 8.0      # Cursor speed (higher = faster)
+SMOOTHING_FACTOR    = 0.25     # 0.1 = smooth, 0.5 = responsive
+
+# Blink detection
+EAR_CLOSE_THRESHOLD = 0.20     # Lower = more sensitive
+
+# Voice
 VOICE_LANGUAGE      = "en-US"  # Try "en-IN" for Indian English
-CALIBRATION_FRAMES  = 60    # ~2 seconds at 30fps
+
+# Code generation
+PREFERRED_EDITOR    = "notepad" # "notepad" | "vscode" | "auto"
+
+# Camera
+CAMERA_INDEX        = 0        # Try 1 if wrong camera selected
+CAMERA_FPS          = 30       # Lower = less CPU usage
 ```
 
 ---
@@ -218,10 +190,12 @@ CALIBRATION_FRAMES  = 60    # ~2 seconds at 30fps
 |---------|----------|
 | Cursor drifts | Press `C` to re-calibrate; improve lighting |
 | False blink clicks | Raise `EAR_CLOSE_THRESHOLD` to `0.22` |
-| Voice not recognised | Check internet; install `pocketsphinx` for offline |
-| PyAudio install fails | `sudo apt-get install portaudio19-dev` |
-| "Cannot open camera" | Try `CAMERA_INDEX = 1` in config.py |
+| Voice not recognised | Check internet connection |
+| PyAudio install fails | `pip install pipwin && pipwin install pyaudio` |
+| "Cannot open camera" | Set `CAMERA_INDEX = 1` in config.py |
 | High CPU usage | Set `CAMERA_FPS = 15` in config.py |
+| Code generates but editor empty | Check `PREFERRED_EDITOR` in config.py |
+| "App not found" for VS Code | Ensure `code` is on your system PATH |
 
 ---
 
